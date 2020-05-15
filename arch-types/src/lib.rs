@@ -1,5 +1,5 @@
 #![allow(non_camel_case_types)]
-use std::ops::{BitAnd, BitOr};
+use std::ops::{BitAnd, BitOr, Shl};
 use typenum::{marker_traits::Bit, False, True};
 
 macro_rules! tuple_impl {
@@ -8,18 +8,15 @@ macro_rules! tuple_impl {
         $($features:ident)*
     } => {
         tuple_impl! {
-            @features [$($features)*]
             (T12, T11, T10, T9, T8, T7, T6, T5, T4, T3, T2, T1)
         }
     };
 
     // Unpack the next tuple
     {
-        @features $features:tt
         ($first:ident, $second:ident, $($rest:ident),+)
     } => {
         tuple_impl! {
-            @features $features
             ($first, $second, $($rest),*)
             ($second, $($rest),*)
         }
@@ -27,21 +24,15 @@ macro_rules! tuple_impl {
 
     // Special case the 2-tuple
     {
-        @features [$($feature:ident)*]
         ($first:ident, $second:ident)
     } => {
         unsafe impl<$first, $second> Features for ($first, $second)
         where
             $first: Features,
             $second: Features,
-            $(
-                $first::$feature: BitOr<<$second as Features>::$feature>,
-                <$first::$feature as BitOr<<$second as Features>::$feature>>::Output: Bit,
-            )*
+            <$first as Features>::Available: BitOr<<$second as Features>::Available>
         {
-            $(
-                type $feature = <$first::$feature as BitOr<<$second as Features>::$feature>>::Output;
-            )*
+            type Available = <<$first as Features>::Available as BitOr<<$second as Features>::Available>>::Output;
 
             fn detect() -> Option<Self> {
                 Some(($first::detect()?, $second::detect()?))
@@ -55,7 +46,6 @@ macro_rules! tuple_impl {
 
     // Implement
     {
-        @features [$($feature:ident)*]
         ($first:ident, $($rest:ident),+)
         $next:tt
     } => {
@@ -66,14 +56,9 @@ macro_rules! tuple_impl {
                 $rest: Features,
             )*
             $next: Features,
-            $(
-                $first::$feature: BitOr<<$next as Features>::$feature>,
-                <$first::$feature as BitOr<<$next as Features>::$feature>>::Output: Bit,
-            )*
+            <$first as Features>::Available: BitOr<<$next as Features>::Available>
         {
-            $(
-                type $feature = <$first::$feature as BitOr<<$next as Features>::$feature>>::Output;
-            )*
+            type Available = <<$first as Features>::Available as BitOr<<$next as Features>::Available>>::Output;
 
             fn detect() -> Option<Self> {
                 Some(($first::detect()?, $($rest::detect()?),*))
@@ -85,7 +70,6 @@ macro_rules! tuple_impl {
         }
 
         tuple_impl! {
-            @features [$($feature)*]
             ($($rest),*)
         }
     };
@@ -101,9 +85,7 @@ macro_rules! features {
     } => {
         /// Indicates the presence of available features.
         pub unsafe trait Features: Copy {
-            $(
-                type $ident: Bit;
-            )*
+            type Available;
 
             fn detect() -> Option<Self>;
 
@@ -114,7 +96,6 @@ macro_rules! features {
             #[doc = "The `"]
             #[doc = $detect]
             #[doc = "` feature."]
-            /// The $detect feature.
             #[derive(Copy, Clone, Debug)]
             pub struct $ident(());
         )*
@@ -131,43 +112,14 @@ macro_rules! features {
 
         tuple_impl! { $($ident)* }
 
-        features! { @pack $detect_macro, $([$detect, $ident])* => [$($ident)*] }
+        features!{ @impl $detect_macro => $([$ident, $detect])* }
     };
 
-    // This rule packs the list of feature idents into a token tree, so they can be iterated later
     {
-        @pack $detect_macro:ident, $([$detect:tt, $ident:ident])* => $all:tt
+        @impl $detect_macro:ident => [$ident:ident, $detect:tt]
     } => {
-        $(
-            features! { @unpack $detect_macro, $detect, $ident => $all }
-        )*
-    };
-
-    // This rule unpacks the token tree to implement all of the traits
-    {
-        @unpack $detect_macro:ident, $detect:tt, $ident:ident => [$($all:ident)*]
-    } => {
-        // This macro generates the Supports trait for just $ident
-        macro_rules! generate_associated_type {
-            // This is the target type!
-            {
-                $ident
-            } => {
-                type $ident = True;
-            };
-
-            // This is another type
-            {
-                $other:ident
-            } => {
-                type $other = False;
-            }
-        }
-
         unsafe impl Features for $ident {
-            $(
-                generate_associated_type! { $all }
-            )*
+            type Available = typenum::U1;
 
             fn detect() -> Option<Self> {
                 if $detect_macro!($detect) {
@@ -181,6 +133,28 @@ macro_rules! features {
                 Self(())
             }
         }
+    };
+
+    {
+        @impl $detect_macro:ident => [$ident:ident, $detect:tt] [$next:ident, $next_detect:tt] $($rest:tt)*
+    } => {
+        unsafe impl Features for $ident {
+            type Available = <<$next as Features>::Available as Shl<typenum::U1>>::Output;
+
+            fn detect() -> Option<Self> {
+                if $detect_macro!($detect) {
+                    Some(Self(()))
+                } else {
+                    None
+                }
+            }
+
+            unsafe fn new_unchecked() -> Self {
+                Self(())
+            }
+        }
+
+        features!{ @impl $detect_macro => [$next, $next_detect] $($rest)* }
     }
 }
 
