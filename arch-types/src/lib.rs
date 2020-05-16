@@ -1,5 +1,5 @@
 #![allow(non_camel_case_types)]
-use std::ops::{BitAnd, BitOr};
+use std::ops::{BitAnd, BitOr, Not};
 use typenum::{marker_traits::Bit, False, True};
 
 macro_rules! tuple_impl {
@@ -91,6 +91,70 @@ macro_rules! tuple_impl {
     };
 }
 
+macro_rules! subset_impl {
+    {
+        $ident:ident $($rest:ident)*
+    } => {
+        subset_impl! {
+            @impl $($rest)*
+            @value [
+                <
+                    <<Target as Features>::$ident as Not>::Output
+                    as BitOr<<Arch as Features>::$ident>
+                >::Output
+            ]
+            @bounds [
+                <Target as Features>::$ident: Not,
+                <<Target as Features>::$ident as Not>::Output: BitOr<<Arch as Features>::$ident>,
+            ]
+        }
+    };
+
+    {
+        @impl
+        @value [$($value:tt)*]
+        @bounds [$($bounds:tt)*]
+    } => {
+        impl<Target, Arch> IsSubset<Target> for Arch
+        where
+            Target: Features,
+            Arch: Features,
+            $($value)*: Bit,
+            $($bounds)*
+        {
+            type Value = $($value)*;
+        }
+    };
+
+    {
+        @impl $ident:ident $($rest:ident)*
+        @value [$($value:tt)*]
+        @bounds [$($bounds:tt)*]
+    } => {
+        subset_impl! {
+            @impl $($rest)*
+            @value [
+                <
+                    <
+                        <<Target as Features>::$ident as Not>::Output
+                        as BitOr<<Arch as Features>::$ident>
+                    >::Output
+                    as BitAnd<$($value)*>
+                >::Output
+            ]
+            @bounds [
+                $($bounds)*
+                <Target as Features>::$ident: Not,
+                <<Target as Features>::$ident as Not>::Output: BitOr<<Arch as Features>::$ident>,
+                <
+                    <<Target as Features>::$ident as Not>::Output
+                    as BitOr<<Arch as Features>::$ident>
+                >::Output: BitAnd<$($value)*>,
+            ]
+        }
+    };
+}
+
 macro_rules! features {
     {
         @detect_macro $detect_macro:ident
@@ -105,16 +169,37 @@ macro_rules! features {
                 type $ident: Bit;
             )*
 
+            /// Detect the existence of this feature, returning `None` if it isn't supported by the
+            /// CPU.
             fn detect() -> Option<Self>;
 
+            /// Create a new feature type.
+            ///
+            /// # Safety
+            /// Undefined behavior if the feature is not supported by the CPU.
             unsafe fn new_unchecked() -> Self;
+
+            /// Determine if this feature is a subset of another feature.
+            fn is_subset_of<Arch>(self) -> bool
+            where
+                Self: IsSubset<Arch>,
+            {
+                <Self as IsSubset<Arch>>::Value::BOOL
+            }
+
+            /// Determine if this feature is a superset of another feature.
+            fn is_superset_of<Arch>(self) -> bool
+            where
+                Arch: IsSubset<Self>,
+            {
+                <Arch as IsSubset<Self>>::Value::BOOL
+            }
         }
 
         $(
             #[doc = "The `"]
             #[doc = $detect]
             #[doc = "` feature."]
-            /// The $detect feature.
             #[derive(Copy, Clone, Debug)]
             pub struct $ident(());
         )*
@@ -128,6 +213,8 @@ macro_rules! features {
                 };
             )*
         }
+
+        subset_impl! { $($ident)* }
 
         tuple_impl! { $($ident)* }
 
@@ -198,6 +285,21 @@ features! {
     @detect "avx2"
 }
 
+/// Indicates if an architecture contains all of the features of another architecture.
+pub trait IsSubset<Target> {
+    /// `True` if `Self` is a subset of `Target`, `False` otherwise.
+    type Value: Bit;
+}
+
+/// Ensures an architecture contains all of the features of another architecture.
+pub trait Subset<Target>: IsSubset<Target, Value = True> {}
+impl<Target, Arch> Subset<Target> for Arch
+where
+    Target: Features,
+    Arch: IsSubset<Target, Value = True>,
+{
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -205,15 +307,22 @@ mod test {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn feature_requirement() {
-        fn foo<F>(_: F)
+        type Required = (sse, avx);
+        fn foo<F>(f: F)
         where
-            F: Features<sse = True, avx = True>,
+            F: Features + Subset<Required, Value = True>,
+            Required: IsSubset<F>,
         {
             println!(
                 "sse: {}, avx: {}, avx2: {}",
                 F::sse::BOOL,
                 F::avx::BOOL,
                 F::avx2::BOOL
+            );
+            println!(
+                "is superset: {}, is subset: {}",
+                f.is_superset_of::<Required>(),
+                f.is_subset_of::<Required>()
             );
         }
         if let Some(tag) = <(sse, avx, avx2)>::detect() {
