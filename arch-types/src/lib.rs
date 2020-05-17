@@ -16,6 +16,7 @@
 pub struct UnsafeConstructible(());
 
 impl UnsafeConstructible {
+    #[doc(hidden)]
     pub unsafe fn new() -> Self {
         Self(())
     }
