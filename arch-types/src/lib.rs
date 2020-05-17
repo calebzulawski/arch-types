@@ -1,271 +1,98 @@
 #![allow(non_camel_case_types)]
-use std::ops::{BitAnd, BitOr, Not};
-use typenum::{marker_traits::Bit, False, True};
 
-macro_rules! tuple_impl {
-    // Initial state
-    {
-        $($features:ident)*
-    } => {
-        tuple_impl! {
-            @features [$($features)*]
-            (T12, T11, T10, T9, T8, T7, T6, T5, T4, T3, T2, T1)
-        }
-    };
+/// Type-level logic.
+pub mod logic {
+    /// A type-level `bool` type.
+    pub trait Bool {
+        const VALUE: bool;
+    }
 
-    // Unpack the next tuple
-    {
-        @features $features:tt
-        ($first:ident, $second:ident, $($rest:ident),+)
-    } => {
-        tuple_impl! {
-            @features $features
-            ($first, $second, $($rest),*)
-            ($second, $($rest),*)
-        }
-    };
+    /// A type-level `true`.
+    #[derive(Copy, Clone, Debug)]
+    pub struct True;
 
-    // Special case the 2-tuple
-    {
-        @features [$($feature:ident)*]
-        ($first:ident, $second:ident)
-    } => {
-        unsafe impl<$first, $second> Features for ($first, $second)
-        where
-            $first: Features,
-            $second: Features,
-            $(
-                $first::$feature: BitOr<<$second as Features>::$feature>,
-                <$first::$feature as BitOr<<$second as Features>::$feature>>::Output: Bit,
-            )*
-        {
-            $(
-                type $feature = <$first::$feature as BitOr<<$second as Features>::$feature>>::Output;
-            )*
+    /// A type-level `false`.
+    #[derive(Copy, Clone, Debug)]
+    pub struct False;
 
-            fn detect() -> Option<Self> {
-                Some(($first::detect()?, $second::detect()?))
-            }
+    impl Bool for True {
+        const VALUE: bool = true;
+    }
 
-            unsafe fn new_unchecked() -> Self {
-                ($first::new_unchecked(), $second::new_unchecked())
-            }
-        }
-    };
-
-    // Implement
-    {
-        @features [$($feature:ident)*]
-        ($first:ident, $($rest:ident),+)
-        $next:tt
-    } => {
-        unsafe impl<$first, $($rest),*> Features for ($first, $($rest),*)
-        where
-            $first: Features,
-            $(
-                $rest: Features,
-            )*
-            $next: Features,
-            $(
-                $first::$feature: BitOr<<$next as Features>::$feature>,
-                <$first::$feature as BitOr<<$next as Features>::$feature>>::Output: Bit,
-            )*
-        {
-            $(
-                type $feature = <$first::$feature as BitOr<<$next as Features>::$feature>>::Output;
-            )*
-
-            fn detect() -> Option<Self> {
-                Some(($first::detect()?, $($rest::detect()?),*))
-            }
-
-            unsafe fn new_unchecked() -> Self {
-                ($first::new_unchecked(), $($rest::new_unchecked()),*)
-            }
-        }
-
-        tuple_impl! {
-            @features [$($feature)*]
-            ($($rest),*)
-        }
-    };
+    impl Bool for False {
+        const VALUE: bool = false;
+    }
 }
 
-macro_rules! subset_impl {
-    {
-        $ident:ident $($rest:ident)*
-    } => {
-        subset_impl! {
-            @impl $($rest)*
-            @value [
-                <
-                    <<Target as Features>::$ident as Not>::Output
-                    as BitOr<<Arch as Features>::$ident>
-                >::Output
-            ]
-            @bounds [
-                <Target as Features>::$ident: Not,
-                <<Target as Features>::$ident as Not>::Output: BitOr<<Arch as Features>::$ident>,
-            ]
-        }
-    };
-
-    {
-        @impl
-        @value [$($value:tt)*]
-        @bounds [$($bounds:tt)*]
-    } => {
-        impl<Target, Arch> IsSubset<Target> for Arch
-        where
-            Target: Features,
-            Arch: Features,
-            $($value)*: Bit,
-            $($bounds)*
-        {
-            type Value = $($value)*;
-        }
-    };
-
-    {
-        @impl $ident:ident $($rest:ident)*
-        @value [$($value:tt)*]
-        @bounds [$($bounds:tt)*]
-    } => {
-        subset_impl! {
-            @impl $($rest)*
-            @value [
-                <
-                    <
-                        <<Target as Features>::$ident as Not>::Output
-                        as BitOr<<Arch as Features>::$ident>
-                    >::Output
-                    as BitAnd<$($value)*>
-                >::Output
-            ]
-            @bounds [
-                $($bounds)*
-                <Target as Features>::$ident: Not,
-                <<Target as Features>::$ident as Not>::Output: BitOr<<Arch as Features>::$ident>,
-                <
-                    <<Target as Features>::$ident as Not>::Output
-                    as BitOr<<Arch as Features>::$ident>
-                >::Output: BitAnd<$($value)*>,
-            ]
-        }
-    };
-}
+use logic::*;
 
 macro_rules! features {
     {
         @detect_macro $detect_macro:ident
         $(
             @feature $ident:ident
-            @detect $detect:tt
+            @detect $feature_lit:tt
         )*
     } => {
         /// Indicates the presence of available features.
         pub unsafe trait Features: Copy {
             $(
-                type $ident: Bit;
+                #[doc = "Indicates presence of the `"]
+                #[doc = $feature_lit]
+                #[doc = "` feature."]
+                type $ident: Bool;
             )*
 
-            /// Detect the existence of this feature, returning `None` if it isn't supported by the
+            /// Detect the existence of these features, returning `None` if it isn't supported by the
             /// CPU.
-            fn detect() -> Option<Self>;
-
-            /// Create a new feature type.
-            ///
-            /// # Safety
-            /// Undefined behavior if the feature is not supported by the CPU.
-            unsafe fn new_unchecked() -> Self;
-
-            /// Determine if this feature is a subset of another feature.
-            fn is_subset_of<Arch>(self) -> bool
-            where
-                Self: IsSubset<Arch>,
-            {
-                <Self as IsSubset<Arch>>::Value::BOOL
-            }
-
-            /// Determine if this feature is a superset of another feature.
-            fn is_superset_of<Arch>(self) -> bool
-            where
-                Arch: IsSubset<Self>,
-            {
-                <Arch as IsSubset<Self>>::Value::BOOL
-            }
-        }
-
-        $(
-            #[doc = "The `"]
-            #[doc = $detect]
-            #[doc = "` feature."]
-            #[derive(Copy, Clone, Debug)]
-            pub struct $ident(());
-        )*
-
-        macro_rules! feature_as_type {
-            $(
-                {
-                    $detect
-                } => {
-                    $ident
-                };
-            )*
-        }
-
-        subset_impl! { $($ident)* }
-
-        tuple_impl! { $($ident)* }
-
-        features! { @pack $detect_macro, $([$detect, $ident])* => [$($ident)*] }
-    };
-
-    // This rule packs the list of feature idents into a token tree, so they can be iterated later
-    {
-        @pack $detect_macro:ident, $([$detect:tt, $ident:ident])* => $all:tt
-    } => {
-        $(
-            features! { @unpack $detect_macro, $detect, $ident => $all }
-        )*
-    };
-
-    // This rule unpacks the token tree to implement all of the traits
-    {
-        @unpack $detect_macro:ident, $detect:tt, $ident:ident => [$($all:ident)*]
-    } => {
-        // This macro generates the Supports trait for just $ident
-        macro_rules! generate_associated_type {
-            // This is the target type!
-            {
-                $ident
-            } => {
-                type $ident = True;
-            };
-
-            // This is another type
-            {
-                $other:ident
-            } => {
-                type $other = False;
-            }
-        }
-
-        unsafe impl Features for $ident {
-            $(
-                generate_associated_type! { $all }
-            )*
-
             fn detect() -> Option<Self> {
-                if $detect_macro!($detect) {
-                    Some(Self(()))
+                if $((!Self::$ident::VALUE || $detect_macro!($feature_lit)) && )* true {
+                    Some(unsafe { Self::new_unchecked() })
                 } else {
                     None
                 }
             }
 
-            unsafe fn new_unchecked() -> Self {
-                Self(())
+            /// Create a new architecture type handle.
+            ///
+            /// # Safety
+            /// Undefined behavior if the feature is not supported by the CPU.
+            unsafe fn new_unchecked() -> Self;
+        }
+
+        #[macro_export]
+        macro_rules! feature_ident {
+            $( { $feature_lit } => { $ident }; )*
+            { $other:tt } => { compile_error!("unknown feature") }
+        }
+
+        features! { @with_dollar ($) => $([$ident, $feature_lit])* }
+    };
+
+    {
+        @with_dollar ($dollar:tt) => $([$ident:ident, $feature_lit:tt])*
+    } => {
+        #[macro_export]
+        macro_rules! new_features_type {
+            { $vis:vis $name:ident => $dollar($feature:tt),* } => {
+                #[derive(Copy, Clone, Debug)]
+                $vis struct $name(());
+
+                macro_rules! __associated_type {
+                    $dollar(
+                        { $feature } => { $crate::logic::True };
+                    )*
+                    { $other:tt } => { $crate::logic::False };
+                }
+                unsafe impl $crate::Features for $name {
+                    $(
+                        type $ident = __associated_type!{ $feature_lit };
+                    )*
+
+                    unsafe fn new_unchecked() -> Self {
+                        Self(())
+                    }
+                }
             }
         }
     }
@@ -275,58 +102,153 @@ macro_rules! features {
 features! {
     @detect_macro is_x86_feature_detected
 
+    @feature aes
+    @detect "aes"
+
+    @feature pclmulqdq
+    @detect "pclmulqdq"
+
+    @feature rdrand
+    @detect "rdrand"
+
+    @feature rdseed
+    @detect "rdseed"
+
+    @feature tsc
+    @detect "tsc"
+
+    @feature mmx
+    @detect "mmx"
+
     @feature sse
     @detect "sse"
+
+    @feature sse2
+    @detect "sse2"
+
+    @feature sse3
+    @detect "sse3"
+
+    @feature ssse3
+    @detect "ssse3"
+
+    @feature sse41
+    @detect "sse4.1"
+
+    @feature sse42
+    @detect "sse4.2"
+
+    @feature sse4a
+    @detect "sse4a"
+
+    @feature sha
+    @detect "sha"
 
     @feature avx
     @detect "avx"
 
     @feature avx2
     @detect "avx2"
-}
 
-/// Indicates if an architecture contains all of the features of another architecture.
-pub trait IsSubset<Target> {
-    /// `True` if `Self` is a subset of `Target`, `False` otherwise.
-    type Value: Bit;
-}
+    @feature avx512f
+    @detect "avx512f"
 
-/// Ensures an architecture contains all of the features of another architecture.
-pub trait Subset<Target>: IsSubset<Target, Value = True> {}
-impl<Target, Arch> Subset<Target> for Arch
-where
-    Target: Features,
-    Arch: IsSubset<Target, Value = True>,
-{
-}
+    @feature avx512cd
+    @detect "avx512cd"
 
-#[cfg(test)]
-mod test {
-    use super::*;
+    @feature avx512er
+    @detect "avx512er"
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    #[test]
-    fn feature_requirement() {
-        type Required = (sse, avx);
-        fn foo<F>(f: F)
-        where
-            F: Features + Subset<Required, Value = True>,
-            Required: IsSubset<F>,
-        {
-            println!(
-                "sse: {}, avx: {}, avx2: {}",
-                F::sse::BOOL,
-                F::avx::BOOL,
-                F::avx2::BOOL
-            );
-            println!(
-                "is superset: {}, is subset: {}",
-                f.is_superset_of::<Required>(),
-                f.is_subset_of::<Required>()
-            );
-        }
-        if let Some(tag) = <(sse, avx, avx2)>::detect() {
-            foo(tag);
-        }
-    }
+    @feature avx512pf
+    @detect "avx512pf"
+
+    @feature avx512bw
+    @detect "avx512bw"
+
+    @feature avx512dq
+    @detect "avx512dq"
+
+    @feature avx512vl
+    @detect "avx512vl"
+
+    @feature avx512ifma
+    @detect "avx512ifma"
+
+    @feature avx512vbmi
+    @detect "avx512vbmi"
+
+    @feature avx512vpopcntdq
+    @detect "avx512vpopcntdq"
+
+    @feature avx512vbmi2
+    @detect "avx512vbmi2"
+
+    @feature avx512gfni
+    @detect "avx512gfni"
+
+    @feature avx512vaes
+    @detect "avx512vaes"
+
+    @feature avx512vpclmulqdq
+    @detect "avx512vpclmulqdq"
+
+    @feature avx512vnni
+    @detect "avx512vnni"
+
+    @feature avx512bitalg
+    @detect "avx512bitalg"
+
+    @feature avx512bf16
+    @detect "avx512bf16"
+
+    @feature avx512vp2intersect
+    @detect "avx512vp2intersect"
+
+    @feature f16c
+    @detect "f16c"
+
+    @feature fma
+    @detect "fma"
+
+    @feature bmi1
+    @detect "bmi1"
+
+    @feature bmi2
+    @detect "bmi2"
+
+    @feature abm
+    @detect "abm"
+
+    @feature lzcnt
+    @detect "lzcnt"
+
+    @feature tbm
+    @detect "tbm"
+
+    @feature popcnt
+    @detect "popcnt"
+
+    @feature fxsr
+    @detect "fxsr"
+
+    @feature xsave
+    @detect "xsave"
+
+    @feature xsaveopt
+    @detect "xsaveopt"
+
+    @feature xsaves
+    @detect "xsaves"
+
+    @feature xsavec
+    @detect "xsavec"
+
+    @feature cmpxchg16b
+    @detect "cmpxchg16b"
+
+    @feature adx
+    @detect "adx"
+
+    @feature rtm
+    @detect "rtm"
 }
