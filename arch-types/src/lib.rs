@@ -116,6 +116,31 @@ macro_rules! features {
                 compile_error!("unknown feature")
             };
         }
+
+        #[macro_export]
+        macro_rules! has_features {
+            { $name:ident => $dollar($feature:tt),+ } => {
+                { $dollar($crate::has_features!( @impl $name => $feature ) &&)* true }
+            };
+
+            $(
+                { @impl $name:ident => $feature_lit } => {
+                    {
+                    fn __value<F>(_: F) -> bool
+                    where
+                        F: $crate::Features,
+                    {
+                        <F::$ident as $crate::logic::Bool>::VALUE
+                    }
+                    __value($name)
+                    }
+                };
+            )*
+
+            { @impl $name:ident => $unknown:tt } => {
+                compile_error!("unknown feature")
+            }
+        }
     }
 }
 
