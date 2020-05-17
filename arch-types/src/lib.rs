@@ -95,6 +95,27 @@ macro_rules! features {
                 }
             }
         }
+
+        #[macro_export]
+        macro_rules! requires_features {
+            { $dollar($feature:tt),* } => {
+                $crate::requires_features!{ @impl [$dollar($feature)*] => [] }
+            };
+
+            { @impl [] => [$dollar($output:tt)*] } => {
+                impl $crate::Features<$dollar($output)*>
+            };
+
+            $(
+                { @impl [$feature_lit $dollar($rest:tt)*] => [$dollar($output:tt)*] } => {
+                    $crate::requires_features!{ @impl [$dollar($rest)*] => [ $ident = $crate::logic::True, $dollar($output)* ] }
+                };
+            )*
+
+            { @impl [$dollar($all:tt)*] => [$dollar($output:tt)*] } => {
+                compile_error!("unknown feature")
+            };
+        }
     }
 }
 
