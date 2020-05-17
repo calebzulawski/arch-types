@@ -46,6 +46,7 @@ pub mod logic {
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! features {
     {
         @detect_macro $detect_macro:ident
@@ -413,4 +414,103 @@ features! {
 
     @feature rtm
     @detect "rtm"
+}
+
+#[cfg(all(target_arch = "arm", feature = "nightly"))]
+features! {
+    @detect_macro is_arm_feature_detected
+
+    @feature neon
+    @detect "neon"
+
+    @feature pmull
+    @detect "pmull"
+
+    @feature crc
+    @detect "crc"
+
+    @feature crypto
+    @detect "crypto"
+}
+
+#[cfg(all(target_arch = "aarch64", feature = "nightly"))]
+features! {
+    @detect_macro is_aarch64_feature_detected
+
+    @feature neon
+    @detect "neon"
+
+    @feature pmull
+    @detect "pmull"
+
+    @feature fp
+    @detect "fp"
+
+    @feature fp16
+    @detect "fp16"
+
+    @feature sve
+    @detect "sve"
+
+    @feature crc
+    @detect "crc"
+
+    @feature crypto
+    @detect "crypto"
+
+    @feature lse
+    @detect "lse"
+
+    @feature rdm
+    @detect "rdm"
+
+    @feature rcpc
+    @detect "rcpc"
+
+    @feature dotprod
+    @detect "dotprod"
+}
+
+#[cfg(all(target_arch = "mips", feature = "nightly"))]
+features! {
+    @detect_macro is_mips_feature_detected
+
+    @feature msa
+    @detect "msa"
+}
+
+#[cfg(all(target_arch = "mips64", feature = "nightly"))]
+features! {
+    @detect_macro is_mips64_feature_detected
+
+    @feature msa
+    @detect "msa"
+}
+
+#[cfg(all(target_arch = "powerpc", feature = "nightly"))]
+features! {
+    @detect_macro is_powerpc_feature_detected
+
+    @feature altivec
+    @detect "altivec"
+
+    @feature vsx
+    @detect "vsx"
+
+    @feature power8
+    @detect "power8"
+}
+
+#[cfg(all(target_arch = "powerpc64", feature = "nightly"))]
+features! {
+    @detect_macro is_powerpc64_feature_detected
+
+    @feature altivec
+    @detect "altivec"
+
+    @feature vsx
+    @detect "vsx"
+
+    @feature power8
+    @detect "power8"
 }
