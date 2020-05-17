@@ -1,4 +1,5 @@
 #![allow(non_camel_case_types)]
+#![cfg_attr(not(feature = "std"), no_std)]
 //! This crate provides type-level CPU feature detection using a tag dispatch model.
 //!
 //! Tag types implement the [`Features`] trait, which indicates which CPU features are supported.
@@ -44,8 +45,6 @@ pub mod logic {
     }
 }
 
-use logic::*;
-
 macro_rules! features {
     {
         @detect_macro $detect_macro:ident
@@ -60,12 +59,16 @@ macro_rules! features {
                 #[doc = "Indicates presence of the `"]
                 #[doc = $feature_lit]
                 #[doc = "` feature."]
-                type $ident: Bool;
+                type $ident: $crate::logic::Bool;
             )*
 
             /// Detect the existence of these features, returning `None` if it isn't supported by the
             /// CPU.
+            ///
+            /// Requires the `std` feature.
+            #[cfg(feature = "std")]
             fn detect() -> Option<Self> {
+                use $crate::logic::Bool;
                 if $((!Self::$ident::VALUE || $detect_macro!($feature_lit)) && )* true {
                     Some(unsafe { Self::new_unchecked() })
                 } else {
