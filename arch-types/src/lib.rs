@@ -67,14 +67,27 @@ macro_rules! features {
             /// Detect the existence of these features, returning `None` if it isn't supported by the
             /// CPU.
             ///
-            /// Requires the `std` feature.
-            #[cfg(feature = "std")]
-            fn detect() -> Option<Self> {
+            /// When the `std` feature is enabled, this function performs feature detection.
+            /// Otherwise, available features are determined with `target_arch`.
+            fn new() -> Option<Self> {
                 use $crate::logic::Bool;
-                if $((!Self::$ident::VALUE || $detect_macro!($feature_lit)) && )* true {
-                    Some(unsafe { Self::new_unchecked() })
-                } else {
-                    None
+
+                #[cfg(feature = "std")]
+                {
+                    if $((!Self::$ident::VALUE || $detect_macro!($feature_lit)) && )* true {
+                        Some(unsafe { Self::new_unchecked() })
+                    } else {
+                        None
+                    }
+                }
+
+                #[cfg(not(feature = "std"))]
+                {
+                    if $((!Self::$ident::VALUE || cfg!(target_arch = $feature_lit)) && )* true {
+                        Some(unsafe { Self::new_unchecked() })
+                    } else {
+                        None
+                    }
                 }
             }
 
@@ -104,7 +117,7 @@ macro_rules! features {
         /// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         /// # fn main() {
         /// #     use arch_types::{has_features, Features};
-        /// #     if let Some(handle) = SseAvxType::detect() {
+        /// #     if let Some(handle) = SseAvxType::new() {
         /// #         assert!(has_features!(handle => "sse", "avx"));
         /// #     }
         /// # }
@@ -164,7 +177,7 @@ macro_rules! features {
         /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         /// fn main() {
         ///     new_features_type! { Avx => "avx" }
-        ///     if let Some(handle) = Avx::detect() {
+        ///     if let Some(handle) = Avx::new() {
         ///         foo_safe(handle)
         ///     }
         /// }
@@ -189,7 +202,7 @@ macro_rules! features {
         /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         /// fn main() {
         ///     new_features_type! { NotAvx => "sse" }
-        ///     if let Some(handle) = NotAvx::detect() {
+        ///     if let Some(handle) = NotAvx::new() {
         ///         foo_safe(handle)
         ///     }
         /// }
@@ -229,7 +242,7 @@ macro_rules! features {
         ///
         /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         /// fn main() {
-        ///     if let Some(handle) = SseAvxType::detect() {
+        ///     if let Some(handle) = SseAvxType::new() {
         ///         assert!(has_features!(handle => "sse", "avx"));
         ///     }
         /// }

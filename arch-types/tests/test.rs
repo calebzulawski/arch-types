@@ -22,12 +22,12 @@ mod x86 {
     #[test]
     fn requires_features() {
         use arch_types::Features;
-        if let Some(tag) = ArchSseSse2Avx::detect() {
+        if let Some(tag) = ArchSseSse2Avx::new() {
             sse(tag);
             sse_avx(tag);
             sse2(tag);
         }
-        if let Some(tag) = ArchSseAvxAvx2::detect() {
+        if let Some(tag) = ArchSseAvxAvx2::new() {
             sse(tag);
             sse_avx(tag);
             avx2(tag);
