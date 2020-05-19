@@ -242,6 +242,7 @@ macro_rules! features {
         ///
         /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         /// fn main() {
+        ///     assert!(has_features!(type SseAvxType => "sse", "avx"));
         ///     if let Some(handle) = SseAvxType::new() {
         ///         assert!(has_features!(handle => "sse", "avx"));
         ///     }
@@ -249,21 +250,26 @@ macro_rules! features {
         /// ```
         #[macro_export]
         macro_rules! has_features {
-            { $name:ident => $dollar($feature:tt),+ } => {
-                { $dollar($crate::has_features!( @impl $name => $feature ) &&)* true }
+            { type $type:ty => $dollar($feature:tt),+ } => {
+                { $dollar($crate::has_features!( @impl $type => $feature ) &&)* true }
             };
 
-            $(
-                { @impl $name:ident => $feature_lit } => {
-                    {
+            { $expr:expr => $dollar($feature:tt),+ } => {
+                {
+                    #[inline(always)]
                     fn __value<F>(_: F) -> bool
                     where
                         F: $crate::Features,
                     {
-                        <F::$ident as $crate::logic::Bool>::VALUE
+                        $crate::has_features!(type F => $dollar($feature),*)
                     }
-                    __value($name)
-                    }
+                    __value($expr)
+                }
+            };
+
+            $(
+                { @impl $type:ty => $feature_lit } => {
+                    <<$type as $crate::Features>::$ident as $crate::logic::Bool>::VALUE
                 };
             )*
 
