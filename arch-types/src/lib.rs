@@ -3,12 +3,12 @@
 //! This crate provides type-level CPU feature detection using a tag dispatch model.
 //!
 //! Tag types implement the [`Features`] trait, which indicates which CPU features are supported.
-//! The [`new_features_type`] macro creates tag types and [`require_features`] and [`has_features`]
+//! The [`new_features_type`] macro creates tag types and [`impl_features`] and [`has_features`]
 //! ensure CPU features are supported at compile time and run time, respectively.
 //!
 //! [`Features`]: trait.Features.html
 //! [`new_features_type`]: macro.new_features_type.html
-//! [`require_features`]: macro.require_features.html
+//! [`impl_features`]: macro.impl_features.html
 //! [`has_features`]: macro.has_features.html
 
 #[doc(hidden)]
@@ -104,28 +104,9 @@ macro_rules! features {
     {
         @with_dollar ($dollar:tt) => $([$ident:ident, $feature_lit:tt])*
     } => {
-        /// Creates a new type with the specified features.
-        ///
-        /// The generated type implements `Copy`, `Clone`, `Debug`, and [`Features`].  The only way
-        /// to construct the type is via one of the methods in [`Features`].
-        ///
-        /// The following creates a type `SseAvxType` that indicates support for SSE and AVX:
-        /// ```
-        /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// arch_types::new_features_type! { SseAvxType => "sse", "avx" }
-        ///
-        /// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// # fn main() {
-        /// #     use arch_types::{has_features, Features};
-        /// #     if let Some(handle) = SseAvxType::new() {
-        /// #         assert!(has_features!(handle => "sse", "avx"));
-        /// #     }
-        /// # }
-        /// ```
-        ///
-        /// [`Features`]: trait.Features.html
         #[macro_export]
-        macro_rules! new_features_type {
+        #[doc(hidden)]
+        macro_rules! new_features_type_internal {
             { $vis:vis $name:ident => $dollar($feature:tt),* } => {
                 #[derive(Copy, Clone)]
                 $vis struct $name($crate::UnsafeConstructible);
@@ -154,130 +135,163 @@ macro_rules! features {
             }
         }
 
-        /// Evaluates to an `impl Features` requiring particular features.
-        ///
-        /// For example, `require_features!{ "sse", "avx" }` evaluates to `impl Features<sse =
-        /// True, avx = True>`.
-        ///
-        /// This is useful for making unsafe functions safe to call:
-        /// ```
-        /// use arch_types::{require_features, new_features_type, Features};
-        ///
-        /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// #[target_feature(enable = "avx")]
-        /// unsafe fn foo_unsafe() {
-        ///     println!("hello from AVX!");
-        /// }
-        ///
-        /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// fn foo_safe(_: require_features!("avx")) {
-        ///     unsafe { foo_unsafe() } // the trait bound ensures we support AVX
-        /// }
-        ///
-        /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// fn main() {
-        ///     new_features_type! { Avx => "avx" }
-        ///     if let Some(handle) = Avx::new() {
-        ///         foo_safe(handle)
-        ///     }
-        /// }
-        /// ```
-        ///
-        /// The following example fails to compile due to the incorrect feature being provided,
-        /// demonstrating that `foo_safe` is safe:
-        /// ```compile_fail
-        /// # use arch_types::{require_features, new_features_type, has_features, Features};
-        /// #
-        /// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// # #[target_feature(enable = "avx")]
-        /// # unsafe fn foo_unsafe() {
-        /// #     println!("hello from AVX!");
-        /// # }
-        /// #
-        /// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// # fn foo_safe(_: require_features!("avx")) {
-        /// #     unsafe { foo_unsafe() } // the trait bound ensures we support AVX
-        /// # }
-        /// #
-        /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// fn main() {
-        ///     new_features_type! { NotAvx => "sse" }
-        ///     if let Some(handle) = NotAvx::new() {
-        ///         foo_safe(handle)
-        ///     }
-        /// }
-        ///
-        /// ```
         #[macro_export]
-        macro_rules! require_features {
-            { $dollar($feature:tt),* } => {
-                $crate::require_features!{ @impl [$dollar($feature)*] => [] }
-            };
-
-            { @impl [] => [$dollar($output:tt)*] } => {
+        #[doc(hidden)]
+        macro_rules! impl_features_internal {
+            { [] => [$dollar($output:tt)*] } => {
                 impl $crate::Features<$dollar($output)*>
             };
 
             $(
-                { @impl [$feature_lit $dollar($rest:tt)*] => [$dollar($output:tt)*] } => {
-                    $crate::require_features!{ @impl [$dollar($rest)*] => [ $ident = $crate::logic::True, $dollar($output)* ] }
+                { [$feature_lit $dollar($rest:tt)*] => [$dollar($output:tt)*] } => {
+                    $crate::impl_features_internal!{ [$dollar($rest)*] => [ $ident = $crate::logic::True, $dollar($output)* ] }
                 };
             )*
 
-            { @impl [$dollar($all:tt)*] => [$dollar($output:tt)*] } => {
+            { [$dollar($all:tt)*] => [$dollar($output:tt)*] } => {
                 compile_error!("unknown feature")
             };
         }
 
-        /// Reports the presence of features.
-        ///
-        /// This macro evaluates to `true` if all of the features are present, and `false`
-        /// otherwise:
-        ///
-        /// ```
-        /// use arch_types::{new_features_type, has_features, Features};
-        ///
-        /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// new_features_type! { SseAvxType => "sse", "avx" }
-        ///
-        /// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        /// fn main() {
-        ///     assert!(has_features!(type SseAvxType => "sse", "avx"));
-        ///     if let Some(handle) = SseAvxType::new() {
-        ///         assert!(has_features!(handle => "sse", "avx"));
-        ///     }
-        /// }
-        /// ```
         #[macro_export]
-        macro_rules! has_features {
-            { type $type:ty => $dollar($feature:tt),+ } => {
-                { $dollar($crate::has_features!( @impl $type => $feature ) &&)* true }
-            };
-
-            { $expr:expr => $dollar($feature:tt),+ } => {
-                {
-                    #[inline(always)]
-                    fn __value<F>(_: F) -> bool
-                    where
-                        F: $crate::Features,
-                    {
-                        $crate::has_features!(type F => $dollar($feature),*)
-                    }
-                    __value($expr)
-                }
-            };
-
+        #[doc(hidden)]
+        macro_rules! has_features_internal {
             $(
-                { @impl $type:ty => $feature_lit } => {
+                { $type:ty => $feature_lit } => {
                     <<$type as $crate::Features>::$ident as $crate::logic::Bool>::VALUE
                 };
             )*
 
-            { @impl $name:ident => $unknown:tt } => {
+            { $name:ident => $unknown:tt } => {
                 compile_error!("unknown feature")
             }
         }
     }
+}
+
+/// Evaluates to an `impl Features` requiring particular features.
+///
+/// For example, `impl_features!{ "sse", "avx" }` evaluates to `impl Features<sse =
+/// True, avx = True>`.
+///
+/// This is useful for making unsafe functions safe to call:
+/// ```
+/// use arch_types::{impl_features, new_features_type, Features};
+///
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// #[target_feature(enable = "avx")]
+/// unsafe fn foo_unsafe() {
+///     println!("hello from AVX!");
+/// }
+///
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// fn foo_safe(_: impl_features!("avx")) {
+///     unsafe { foo_unsafe() } // the trait bound ensures we support AVX
+/// }
+///
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// fn main() {
+///     new_features_type! { Avx => "avx" }
+///     if let Some(handle) = Avx::new() {
+///         foo_safe(handle)
+///     }
+/// }
+/// ```
+///
+/// The following example fails to compile due to the incorrect feature being provided,
+/// demonstrating that `foo_safe` is safe:
+/// ```compile_fail
+/// # use arch_types::{impl_features, new_features_type, has_features, Features};
+/// #
+/// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// # #[target_feature(enable = "avx")]
+/// # unsafe fn foo_unsafe() {
+/// #     println!("hello from AVX!");
+/// # }
+/// #
+/// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// # fn foo_safe(_: impl_features!("avx")) {
+/// #     unsafe { foo_unsafe() } // the trait bound ensures we support AVX
+/// # }
+/// #
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// fn main() {
+///     new_features_type! { NotAvx => "sse" }
+///     if let Some(handle) = NotAvx::new() {
+///         foo_safe(handle)
+///     }
+/// }
+///
+/// ```
+#[macro_export]
+macro_rules! impl_features {
+    { $($feature:tt),* } => {
+        $crate::impl_features_internal!{ [$($feature)*] => [] }
+    };
+}
+
+/// Reports the presence of features.
+///
+/// This macro evaluates to `true` if all of the features are present, and `false`
+/// otherwise:
+///
+/// ```
+/// use arch_types::{new_features_type, has_features, Features};
+///
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// new_features_type! { SseAvxType => "sse", "avx" }
+///
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// fn main() {
+///     assert!(has_features!(type SseAvxType => "sse", "avx"));
+///     if let Some(handle) = SseAvxType::new() {
+///         assert!(has_features!(handle => "sse", "avx"));
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! has_features {
+    { type $features_type:ty => $($feature:tt),+ } => {
+        { $($crate::has_features_internal!( $features_type => $feature ) &&)* true }
+    };
+
+    { $features_expr:expr => $($feature:tt),+ } => {
+        {
+            #[inline(always)]
+            fn __value<F>(_: F) -> bool
+            where
+                F: $crate::Features,
+            {
+                $crate::has_features!(type F => $($feature),*)
+            }
+            __value($features_expr)
+        }
+    };
+}
+
+/// Creates a new type with the specified features.
+///
+/// The generated type implements `Copy`, `Clone`, `Debug`, and [`Features`].  The only way
+/// to construct the type is via one of the methods in [`Features`].
+///
+/// The following creates a type `SseAvxType` that indicates support for SSE and AVX:
+/// ```
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// arch_types::new_features_type! { SseAvxType => "sse", "avx" }
+///
+/// # #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// # fn main() {
+/// #     use arch_types::{has_features, Features};
+/// #     if let Some(handle) = SseAvxType::new() {
+/// #         assert!(has_features!(handle => "sse", "avx"));
+/// #     }
+/// # }
+/// ```
+///
+/// [`Features`]: trait.Features.html
+#[macro_export]
+macro_rules! new_features_type {
+    { $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{$vis $name => $($feature),*} }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
