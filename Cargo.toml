@@ -2,6 +2,11 @@
 name = "arch-types"
 version = "0.1.0"
 authors = ["Caleb Zulawski <caleb.zulawski@gmail.com>"]
+license = "MIT OR Apache-2.0"
+description = "CPU feature detection types"
+repository = "https://github.com/calebzulawski/arch-types"
+categories = ["hardware-support", "no-std"]
+readme = "README.md"
 edition = "2018"
 
 [features]
