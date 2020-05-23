@@ -82,8 +82,8 @@ jobs:
     - uses: actions/checkout@v1
     - name: Install toolchain
       run: |
-        rustup install --profile minimal ${{ matrix.version }}
-        rustup default ${{ matrix.version }}
+        rustup install --profile minimal nightly
+        rustup default nightly
         rustup target add ${{ matrix.target }}
     - name: Build without test
       if: ${{ !matrix.test }}
