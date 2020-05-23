@@ -55,6 +55,7 @@ macro_rules! features {
         $(
             @feature $ident:ident
             @detect $feature_lit:tt
+            @version #$attr:tt $version_string:literal
         )*
     } => {
         /// Indicates the presence of available CPU features.
@@ -65,7 +66,9 @@ macro_rules! features {
             $(
                 #[doc = "Indicates presence of the `"]
                 #[doc = $feature_lit]
-                #[doc = "` feature."]
+                #[doc = "` feature. Requires Rust "]
+                #[doc = $version_string]
+                #[doc = "."]
                 type $ident: $crate::logic::Bool;
             )*
 
@@ -79,21 +82,8 @@ macro_rules! features {
                 use $crate::logic::Bool;
 
                 $(
-                    // If the feature is enabled globally, skip detection
-                    #[cfg(not(target_feature = $feature_lit))]
-                    {
-                        // If using std, perform detection
-                        #[cfg(feature = "std")]
-                        {
-                            if Self::$ident::VALUE && !$detect_macro!($feature_lit) {
-                                return None;
-                            }
-                        }
-
-                        #[cfg(not(feature = "std"))]
-                        {
-                            return None;
-                        }
+                    if Self::$ident::VALUE && !detect::$ident() {
+                        return None;
                     }
                 )*
                 Some(unsafe { Self::new_unchecked() })
@@ -127,34 +117,19 @@ macro_rules! features {
                 T: Features
             {
                 $(
-                    // If the feature is enabled globally, skip detection
-                    #[cfg(not(target_feature = $feature_lit))]
-                    {
-                        // If this feature is present, we need to detect it
-                        if <<T as $crate::Features>::$ident as $crate::logic::Bool>::VALUE && !<Self::$ident as $crate::logic::Bool>::VALUE {
-                            // If using std, check the feature, otherwise bail
-                            #[cfg(feature = "std")]
-                            {
-                                if !$detect_macro!($feature_lit) {
-                                    return None;
-                                }
-                            }
-                            #[cfg(not(feature = "std"))]
-                            {
-                                return None;
-                            }
-                        }
+                    if <<T as $crate::Features>::$ident as $crate::logic::Bool>::VALUE && !<Self::$ident as $crate::logic::Bool>::VALUE && !detect::$ident() {
+                        return None;
                     }
                 )*
                 unsafe { Some(T::new_unchecked()) }
             }
         }
 
-        features! { @with_dollar ($) => $([$ident, $feature_lit])* }
+        features! { @with_dollar ($), $detect_macro => $([$attr, $ident, $feature_lit])* }
     };
 
     {
-        @with_dollar ($dollar:tt) => $([$ident:ident, $feature_lit:tt])*
+        @with_dollar ($dollar:tt), $detect_macro:ident => $([$attr:tt, $ident:ident, $feature_lit:tt])*
     } => {
         #[macro_export]
         #[doc(hidden)]
@@ -219,6 +194,46 @@ macro_rules! features {
             { $name:ident => $unknown:tt } => {
                 compile_error!("unknown feature")
             }
+        }
+
+        mod detect {
+            macro_rules! implement_detector {
+                {
+                    [$dollar($impl_attr:tt)*], $impl_feature_lit:tt, $impl_ident:ident
+                } => {
+                    // If supported, detect the feature
+                    #[rustversion::$dollar($impl_attr)*]
+                    #[inline(always)]
+                    pub(crate) fn $impl_ident() -> bool {
+                        #[cfg(target_feature = $impl_feature_lit)]
+                        {
+                            true
+                        }
+                        #[cfg(not(target_feature = $impl_feature_lit))]
+                        {
+                            #[cfg(feature = "std")]
+                            {
+                                $detect_macro!($impl_feature_lit)
+                            }
+                            #[cfg(not(feature = "std"))]
+                            {
+                                false
+                            }
+                        }
+                    }
+
+                    // If not supported, we don't detect it
+                    #[rustversion::not($dollar($impl_attr)*)]
+                    #[inline(always)]
+                    pub(crate) fn $impl_ident() -> bool {
+                        false
+                    }
+                }
+            }
+
+            $(
+                implement_detector!{$attr, $feature_lit, $ident}
+            )*
         }
     }
 }
@@ -354,153 +369,203 @@ features! {
 
     @feature aes
     @detect "aes"
+    @version #[since(1.33)] "1.33"
 
     @feature pclmulqdq
     @detect "pclmulqdq"
+    @version #[since(1.33)] "1.33"
 
     @feature rdrand
     @detect "rdrand"
+    @version #[since(1.33)] "1.33"
 
     @feature rdseed
     @detect "rdseed"
+    @version #[since(1.33)] "1.33"
 
     @feature tsc
     @detect "tsc"
+    @version #[since(1.33)] "1.33"
 
     @feature mmx
     @detect "mmx"
+    @version #[since(1.33)] "1.33"
 
     @feature sse
     @detect "sse"
+    @version #[since(1.33)] "1.33"
 
     @feature sse2
     @detect "sse2"
+    @version #[since(1.33)] "1.33"
 
     @feature sse3
     @detect "sse3"
+    @version #[since(1.33)] "1.33"
 
     @feature ssse3
     @detect "ssse3"
+    @version #[since(1.33)] "1.33"
 
     @feature sse41
     @detect "sse4.1"
+    @version #[since(1.33)] "1.33"
 
     @feature sse42
     @detect "sse4.2"
+    @version #[since(1.33)] "1.33"
 
     @feature sse4a
     @detect "sse4a"
+    @version #[since(1.33)] "1.33"
 
     @feature sha
     @detect "sha"
+    @version #[since(1.33)] "1.33"
 
     @feature avx
     @detect "avx"
+    @version #[since(1.33)] "1.33"
 
     @feature avx2
     @detect "avx2"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512f
     @detect "avx512f"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512cd
     @detect "avx512cd"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512er
     @detect "avx512er"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512pf
     @detect "avx512pf"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512bw
     @detect "avx512bw"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512dq
     @detect "avx512dq"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512vl
     @detect "avx512vl"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512ifma
     @detect "avx512ifma"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512vbmi
     @detect "avx512vbmi"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512vpopcntdq
     @detect "avx512vpopcntdq"
+    @version #[since(1.33)] "1.33"
 
     @feature avx512vbmi2
     @detect "avx512vbmi2"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature avx512gfni
     @detect "avx512gfni"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature avx512vaes
     @detect "avx512vaes"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature avx512vpclmulqdq
     @detect "avx512vpclmulqdq"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature avx512vnni
     @detect "avx512vnni"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature avx512bitalg
     @detect "avx512bitalg"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature avx512bf16
     @detect "avx512bf16"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature avx512vp2intersect
     @detect "avx512vp2intersect"
+    @version #[since(1.43.1)] "1.43.1"
 
     @feature f16c
     @detect "f16c"
+    @version #[since(1.38)] "1.38"
 
     @feature fma
     @detect "fma"
+    @version #[since(1.33)] "1.33"
 
     @feature bmi1
     @detect "bmi1"
+    @version #[since(1.33)] "1.33"
 
     @feature bmi2
     @detect "bmi2"
+    @version #[since(1.33)] "1.33"
 
     @feature abm
     @detect "abm"
+    @version #[since(1.33)] "1.33"
 
     @feature lzcnt
     @detect "lzcnt"
+    @version #[since(1.33)] "1.33"
 
     @feature tbm
     @detect "tbm"
+    @version #[since(1.33)] "1.33"
 
     @feature popcnt
     @detect "popcnt"
+    @version #[since(1.33)] "1.33"
 
     @feature fxsr
     @detect "fxsr"
+    @version #[since(1.33)] "1.33"
 
     @feature xsave
     @detect "xsave"
+    @version #[since(1.33)] "1.33"
 
     @feature xsaveopt
     @detect "xsaveopt"
+    @version #[since(1.33)] "1.33"
 
     @feature xsaves
     @detect "xsaves"
+    @version #[since(1.33)] "1.33"
 
     @feature xsavec
     @detect "xsavec"
+    @version #[since(1.33)] "1.33"
 
     @feature cmpxchg16b
     @detect "cmpxchg16b"
+    @version #[since(1.33)] "1.33"
 
     @feature adx
     @detect "adx"
+    @version #[since(1.33)] "1.33"
 
     @feature rtm
     @detect "rtm"
+    @version #[since(1.38)] "1.38"
 }
 
 #[cfg(all(target_arch = "arm", feature = "nightly"))]
@@ -509,15 +574,19 @@ features! {
 
     @feature neon
     @detect "neon"
+    @version #[nightly] "nightly"
 
     @feature pmull
     @detect "pmull"
+    @version #[nightly] "nightly"
 
     @feature crc
     @detect "crc"
+    @version #[nightly] "nightly"
 
     @feature crypto
     @detect "crypto"
+    @version #[nightly] "nightly"
 }
 
 #[cfg(all(target_arch = "aarch64", feature = "nightly"))]
@@ -526,36 +595,47 @@ features! {
 
     @feature neon
     @detect "neon"
+    @version #[nightly] "nightly"
 
     @feature pmull
     @detect "pmull"
+    @version #[nightly] "nightly"
 
     @feature fp
     @detect "fp"
+    @version #[nightly] "nightly"
 
     @feature fp16
     @detect "fp16"
+    @version #[nightly] "nightly"
 
     @feature sve
     @detect "sve"
+    @version #[nightly] "nightly"
 
     @feature crc
     @detect "crc"
+    @version #[nightly] "nightly"
 
     @feature crypto
     @detect "crypto"
+    @version #[nightly] "nightly"
 
     @feature lse
     @detect "lse"
+    @version #[nightly] "nightly"
 
     @feature rdm
     @detect "rdm"
+    @version #[nightly] "nightly"
 
     @feature rcpc
     @detect "rcpc"
+    @version #[nightly] "nightly"
 
     @feature dotprod
     @detect "dotprod"
+    @version #[nightly] "nightly"
 }
 
 #[cfg(all(target_arch = "mips", feature = "nightly"))]
@@ -564,6 +644,7 @@ features! {
 
     @feature msa
     @detect "msa"
+    @version #[nightly] "nightly"
 }
 
 #[cfg(all(target_arch = "mips64", feature = "nightly"))]
@@ -572,6 +653,7 @@ features! {
 
     @feature msa
     @detect "msa"
+    @version #[nightly] "nightly"
 }
 
 #[cfg(all(target_arch = "powerpc", feature = "nightly"))]
@@ -580,12 +662,15 @@ features! {
 
     @feature altivec
     @detect "altivec"
+    @version #[nightly] "nightly"
 
     @feature vsx
     @detect "vsx"
+    @version #[nightly] "nightly"
 
     @feature power8
     @detect "power8"
+    @version #[nightly] "nightly"
 }
 
 #[cfg(all(target_arch = "powerpc64", feature = "nightly"))]
@@ -594,10 +679,13 @@ features! {
 
     @feature altivec
     @detect "altivec"
+    @version #[nightly] "nightly"
 
     @feature vsx
     @detect "vsx"
+    @version #[nightly] "nightly"
 
     @feature power8
     @detect "power8"
+    @version #[nightly] "nightly"
 }

@@ -9,6 +9,9 @@ default = ["std"]
 std = []
 nightly = []
 
+[dependencies]
+rustversion = "1"
+
 [package.metadata.docs.rs]
 all-features = true
 targets = [
