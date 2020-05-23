@@ -4,19 +4,17 @@ on: [push]
 
 jobs:
   build:
-
-
     strategy:
       matrix:
         target:
         - i686-unknown-linux-gnu
         - x86_64-unknown-linux-gnu
         - aarch64-unknown-linux-gnu
-        - arm-unknown-linux-gnueabihf
-        - mips-unknown-linux-gnu
-        - mips64-unknown-linux-gnuabi64
-        - powerpc-unknown-linux-gnu
-        - powerpc64-unknown-linux-gnu
+        #- arm-unknown-linux-gnueabihf
+        #- mips-unknown-linux-gnu
+        #- mips64-unknown-linux-gnuabi64
+        #- powerpc-unknown-linux-gnu
+        #- powerpc64-unknown-linux-gnu
         version:
         - 1.34.0
         - stable
@@ -28,6 +26,10 @@ jobs:
         include:
         - target: x86_64-unknown-linux-gnu
           test: true
+        exclude:
+        - target: aarch64-unknown-linux-gnu
+          version: [1.34.0, stable, beta]
+          features: --all-features
 
     runs-on: ubuntu-latest
     
