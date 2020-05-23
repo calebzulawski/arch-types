@@ -2,9 +2,11 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 //! This crate provides type-level CPU feature detection using a tag dispatch model.
 //!
-//! Tag types implement the [`Features`] trait, which indicates which CPU features are supported.
+//! Tag types implement the [`Features`] trait, which proves either statically or dynamically
+//! that a particular set of features is supported by the CPU.
+//!
 //! The [`new_features_type`] macro creates tag types and [`impl_features`] and [`has_features`]
-//! ensure CPU features are supported at compile time and run time, respectively.
+//! ensure CPU features are supported statically and dynamically, respectively.
 //!
 //! [`Features`]: trait.Features.html
 //! [`new_features_type`]: macro.new_features_type.html
@@ -55,7 +57,10 @@ macro_rules! features {
             @detect $feature_lit:tt
         )*
     } => {
-        /// Indicates the presence of available features.
+        /// Indicates the presence of available CPU features.
+        ///
+        /// An instance of a type implementing `Features` serves as a proof that the specified CPU
+        /// features are supported by the CPU.
         pub unsafe trait Features: Copy {
             $(
                 #[doc = "Indicates presence of the `"]
@@ -69,33 +74,80 @@ macro_rules! features {
             ///
             /// When the `std` feature is enabled, this function performs feature detection.
             /// Otherwise, available features are determined with `target_arch`.
+            #[inline(always)]
             fn new() -> Option<Self> {
                 use $crate::logic::Bool;
 
-                #[cfg(feature = "std")]
-                {
-                    if $((!Self::$ident::VALUE || $detect_macro!($feature_lit)) && )* true {
-                        Some(unsafe { Self::new_unchecked() })
-                    } else {
-                        None
-                    }
-                }
+                $(
+                    // If the feature is enabled globally, skip detection
+                    #[cfg(not(target_feature = $feature_lit))]
+                    {
+                        // If using std, perform detection
+                        #[cfg(feature = "std")]
+                        {
+                            if Self::$ident::VALUE && !$detect_macro!($feature_lit) {
+                                return None;
+                            }
+                        }
 
-                #[cfg(not(feature = "std"))]
-                {
-                    if $((!Self::$ident::VALUE || cfg!(target_arch = $feature_lit)) && )* true {
-                        Some(unsafe { Self::new_unchecked() })
-                    } else {
-                        None
+                        #[cfg(not(feature = "std"))]
+                        {
+                            return None;
+                        }
                     }
-                }
+                )*
+                Some(unsafe { Self::new_unchecked() })
             }
 
             /// Create a new architecture type handle.
             ///
             /// # Safety
-            /// Undefined behavior if the feature is not supported by the CPU.
+            /// Undefined behavior if the feature set is not supported by the CPU.
             unsafe fn new_unchecked() -> Self;
+
+            /// Convert this into a subset of this feature set, if possible.
+            #[inline(always)]
+            fn shrink<T>(self) -> Option<T>
+            where
+                T: Features
+            {
+                $(
+                    if <<T as $crate::Features>::$ident as $crate::logic::Bool>::VALUE && !<Self::$ident as $crate::logic::Bool>::VALUE {
+                        return None;
+                    }
+                )*
+                unsafe { Some(T::new_unchecked()) }
+            }
+
+            /// Convert this into another feature set, performing additional feature detection if
+            /// necessary.
+            #[inline(always)]
+            fn expand<T>(self) -> Option<T>
+            where
+                T: Features
+            {
+                $(
+                    // If the feature is enabled globally, skip detection
+                    #[cfg(not(target_feature = $feature_lit))]
+                    {
+                        // If this feature is present, we need to detect it
+                        if <<T as $crate::Features>::$ident as $crate::logic::Bool>::VALUE && !<Self::$ident as $crate::logic::Bool>::VALUE {
+                            // If using std, check the feature, otherwise bail
+                            #[cfg(feature = "std")]
+                            {
+                                if !$detect_macro!($feature_lit) {
+                                    return None;
+                                }
+                            }
+                            #[cfg(not(feature = "std"))]
+                            {
+                                return None;
+                            }
+                        }
+                    }
+                )*
+                unsafe { Some(T::new_unchecked()) }
+            }
         }
 
         features! { @with_dollar ($) => $([$ident, $feature_lit])* }
@@ -107,7 +159,9 @@ macro_rules! features {
         #[macro_export]
         #[doc(hidden)]
         macro_rules! new_features_type_internal {
-            { $vis:vis $name:ident => $dollar($feature:tt),* } => {
+            {
+                $vis:vis $name:ident => $dollar($feature:tt),*
+            } => {
                 #[derive(Copy, Clone)]
                 $vis struct $name($crate::UnsafeConstructible);
 
@@ -169,7 +223,7 @@ macro_rules! features {
     }
 }
 
-/// Evaluates to an `impl Features` requiring particular features.
+/// Evaluates to an `impl Features` requiring particular CPU features.
 ///
 /// For example, `impl_features!{ "sse", "avx" }` evaluates to `impl Features<sse =
 /// True, avx = True>`.
@@ -269,7 +323,7 @@ macro_rules! has_features {
     };
 }
 
-/// Creates a new type with the specified features.
+/// Creates a new type that proves support of the specified CPU features.
 ///
 /// The generated type implements `Copy`, `Clone`, `Debug`, and [`Features`].  The only way
 /// to construct the type is via one of the methods in [`Features`].
