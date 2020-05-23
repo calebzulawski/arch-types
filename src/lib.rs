@@ -135,8 +135,9 @@ macro_rules! features {
         #[doc(hidden)]
         macro_rules! new_features_type_internal {
             {
-                $vis:vis $name:ident => $dollar($feature:tt),*
+                [$dollar($docs:literal)*] $vis:vis $name:ident => $dollar($feature:tt),*
             } => {
+                $dollar(#[doc = $docs])*
                 #[derive(Copy, Clone)]
                 $vis struct $name($crate::UnsafeConstructible);
 
@@ -357,10 +358,16 @@ macro_rules! has_features {
 /// # }
 /// ```
 ///
+/// Optionally, the type can be documented:
+/// ```
+/// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+/// arch_types::new_features_type! { #[doc = "A type supporting SSE and AVX."] SseAvxType => "sse", "avx" }
+/// ```
 /// [`Features`]: trait.Features.html
 #[macro_export]
 macro_rules! new_features_type {
-    { $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{$vis $name => $($feature),*} }
+    { $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{ [] $vis $name => $($feature),*} };
+    { $(#[doc = $docs:literal])* $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{ [$($docs)*] $vis $name => $($feature),*} }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
