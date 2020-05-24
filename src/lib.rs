@@ -13,6 +13,7 @@
 //! [`impl_features`]: macro.impl_features.html
 //! [`has_features`]: macro.has_features.html
 
+// Cannot be (safely) constructed in other crates.
 #[doc(hidden)]
 #[derive(Copy, Clone)]
 pub struct UnsafeConstructible(());
@@ -46,6 +47,19 @@ pub mod logic {
     impl Bool for False {
         const VALUE: bool = false;
     }
+}
+
+/// Constructs a feature set from another feature set.
+///
+/// You should not implement this trait.  It is automatically implemented by [`new_features_type`].
+///
+/// [`new_features_type`]: macro.new_features_type.html
+pub trait FromFeatures<T>: Features
+where
+    T: Features,
+{
+    /// Construct this from another feature set.
+    fn from_features(features: T) -> Self;
 }
 
 #[allow(unused_macros)]
@@ -134,8 +148,16 @@ macro_rules! features {
         #[macro_export]
         #[doc(hidden)]
         macro_rules! new_features_type_internal {
+            $(
+                {
+                    [$dollar($docs:literal)*] $vis:vis $name:ident => [$feature_lit $dollar($feature:tt)*] => [$dollar($feature_ident:tt)*]
+                } => {
+                    $crate::new_features_type_internal! { [$dollar($docs)*] $vis $name => [$dollar($feature)*] => [$dollar($feature_ident)* $ident] }
+                };
+            )*
+
             {
-                [$dollar($docs:literal)*] $vis:vis $name:ident => $dollar($feature:tt),*
+                [$dollar($docs:literal)*] $vis:vis $name:ident => [] => [$dollar($feature:ident)*]
             } => {
                 $dollar(#[doc = $docs])*
                 #[derive(Copy, Clone)]
@@ -151,15 +173,25 @@ macro_rules! features {
                     $dollar(
                         { $feature } => { $crate::logic::True };
                     )*
-                    { $other:tt } => { $crate::logic::False };
+                    { $other:ident } => { $crate::logic::False };
                 }
                 unsafe impl $crate::Features for $name {
                     $(
-                        type $ident = __associated_type!{ $feature_lit };
+                        type $ident = __associated_type!{ $ident };
                     )*
 
                     unsafe fn new_unchecked() -> Self {
                         Self(unsafe { $crate::UnsafeConstructible::new() })
+                    }
+                }
+
+                impl<T> $crate::FromFeatures<T> for $name
+                where
+                    T: $crate::Features<$dollar($feature = $crate::logic::True),*>,
+                {
+                    #[inline(always)]
+                    fn from_features(features: T) -> $name {
+                        features.shrink().unwrap()
                     }
                 }
             }
@@ -341,8 +373,8 @@ macro_rules! has_features {
 
 /// Creates a new type that proves support of the specified CPU features.
 ///
-/// The generated type implements `Copy`, `Clone`, `Debug`, and [`Features`].  The only way
-/// to construct the type is via one of the methods in [`Features`].
+/// The generated type implements `Copy`, `Clone`, `Debug`, [`Features`], and [`FromFeatures`].
+/// The only way to construct the type is via one of the methods in [`Features`].
 ///
 /// The following creates a type `SseAvxType` that indicates support for SSE and AVX:
 /// ```
@@ -364,10 +396,11 @@ macro_rules! has_features {
 /// arch_types::new_features_type! { #[doc = "A type supporting SSE and AVX."] SseAvxType => "sse", "avx" }
 /// ```
 /// [`Features`]: trait.Features.html
+/// [`FromFeatures`]: trait.FromFeatures.html
 #[macro_export]
 macro_rules! new_features_type {
-    { $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{ [] $vis $name => $($feature),*} };
-    { $(#[doc = $docs:literal])* $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{ [$($docs)*] $vis $name => $($feature),*} }
+    { $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{ [] $vis $name => [$($feature)*] => [] } };
+    { $(#[doc = $docs:literal])* $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{ [$($docs)*] $vis $name => [$($feature)*] => [] } }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
