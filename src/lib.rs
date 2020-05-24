@@ -8,6 +8,17 @@
 //! The [`new_features_type`] macro creates tag types and [`impl_features`] and [`has_features`]
 //! ensure CPU features are supported statically and dynamically, respectively.
 //!
+//! # Cargo features
+//! This crate provides the following cargo features:
+//!   * `std` (enabled by default) - Use the `std` crate for feature detection.  Disable this
+//!     feature for `#[no_std]` support.
+//!   * `nightly` - Enable nightly features.  This includes run-time feature detection for some
+//!     architectures, as well as detection of some particular features.
+//!
+//! If feature detection cannot be performed (either not using `std` or not using a nightly
+//! compiler for a particular feature or architecture), feature detection is performed at compile
+//! time using `#[cfg(target_feature)]`.
+//!
 //! [`Features`]: trait.Features.html
 //! [`new_features_type`]: macro.new_features_type.html
 //! [`impl_features`]: macro.impl_features.html
@@ -231,6 +242,47 @@ macro_rules! features {
 
         mod detect {
             macro_rules! implement_detector {
+                {
+                    [nightly], $impl_feature_lit:tt, $impl_ident:ident
+                } => {
+                    // If supported, detect the feature
+                    #[cfg(feature = "nightly")]
+                    #[rustversion::nightly]
+                    #[inline(always)]
+                    pub(crate) fn $impl_ident() -> bool {
+                        #[cfg(target_feature = $impl_feature_lit)]
+                        {
+                            true
+                        }
+                        #[cfg(not(target_feature = $impl_feature_lit))]
+                        {
+                            #[cfg(feature = "std")]
+                            {
+                                $detect_macro!($impl_feature_lit)
+                            }
+                            #[cfg(not(feature = "std"))]
+                            {
+                                false
+                            }
+                        }
+                    }
+
+                    // If not supported, we don't detect it
+                    #[cfg(feature = "nightly")]
+                    #[rustversion::not(nightly)]
+                    #[inline(always)]
+                    pub(crate) fn $impl_ident() -> bool {
+                        false
+                    }
+
+                    // If not nightly, we also don't detect it
+                    #[cfg(not(feature = "nightly"))]
+                    #[inline(always)]
+                    pub(crate) fn $impl_ident() -> bool {
+                        false
+                    }
+                };
+
                 {
                     [$dollar($impl_attr:tt)*], $impl_feature_lit:tt, $impl_ident:ident
                 } => {
@@ -608,7 +660,7 @@ features! {
     @version #[since(1.38)] "1.38"
 }
 
-#[cfg(all(target_arch = "arm", feature = "nightly"))]
+#[cfg(all(target_arch = "arm"))]
 features! {
     @detect_macro is_arm_feature_detected
 
@@ -629,7 +681,7 @@ features! {
     @version #[nightly] "nightly"
 }
 
-#[cfg(all(target_arch = "aarch64", feature = "nightly"))]
+#[cfg(all(target_arch = "aarch64"))]
 features! {
     @detect_macro is_aarch64_feature_detected
 
@@ -678,7 +730,7 @@ features! {
     @version #[nightly] "nightly"
 }
 
-#[cfg(all(target_arch = "mips", feature = "nightly"))]
+#[cfg(all(target_arch = "mips"))]
 features! {
     @detect_macro is_mips_feature_detected
 
@@ -687,7 +739,7 @@ features! {
     @version #[nightly] "nightly"
 }
 
-#[cfg(all(target_arch = "mips64", feature = "nightly"))]
+#[cfg(all(target_arch = "mips64"))]
 features! {
     @detect_macro is_mips64_feature_detected
 
@@ -696,7 +748,7 @@ features! {
     @version #[nightly] "nightly"
 }
 
-#[cfg(all(target_arch = "powerpc", feature = "nightly"))]
+#[cfg(all(target_arch = "powerpc"))]
 features! {
     @detect_macro is_powerpc_feature_detected
 
@@ -713,7 +765,7 @@ features! {
     @version #[nightly] "nightly"
 }
 
-#[cfg(all(target_arch = "powerpc64", feature = "nightly"))]
+#[cfg(all(target_arch = "powerpc64"))]
 features! {
     @detect_macro is_powerpc64_feature_detected
 
