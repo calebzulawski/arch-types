@@ -74,6 +74,30 @@ where
     fn from_features(features: T) -> Self;
 }
 
+/// Converts this feature set into another feature set.
+///
+/// You should not implement this trait.  It is automatically implemented by [`new_features_type`].
+///
+/// [`new_features_type`]: macro.new_features_type.html
+pub trait IntoFeatures<T>: Features
+where
+    T: Features,
+{
+    /// Convert this feature set into another feature set.
+    fn into_features(self) -> T;
+}
+
+impl<T, U> IntoFeatures<T> for U
+where
+    T: Features,
+    U: Features,
+    T: FromFeatures<U>,
+{
+    fn into_features(self) -> T {
+        T::from_features(self)
+    }
+}
+
 #[allow(unused_macros)]
 macro_rules! features {
     {
