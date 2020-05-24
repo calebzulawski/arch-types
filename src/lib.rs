@@ -1,5 +1,8 @@
 #![allow(non_camel_case_types)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "nightly", feature(custom_inner_attributes))]
+#![cfg_attr(feature = "nightly", allow(unused_attributes))]
+#![cfg_attr(feature = "nightly", rustversion::attr(nightly, feature(stdsimd)))]
 //! This crate provides type-level CPU feature detection using a tag dispatch model.
 //!
 //! Tag types implement the [`Features`] trait, which proves either statically or dynamically
