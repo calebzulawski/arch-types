@@ -61,41 +61,45 @@ pub mod logic {
     }
 }
 
-/// Constructs a feature set from another feature set.
-///
-/// You should not implement this trait.  It is automatically implemented by [`new_features_type`].
-///
-/// [`new_features_type`]: macro.new_features_type.html
-pub trait FromFeatures<T>: Features
-where
-    T: Features,
-{
-    /// Construct this from another feature set.
-    fn from_features(features: T) -> Self;
-}
-
-/// Converts this feature set into another feature set.
-///
-/// You should not implement this trait.  It is automatically implemented by [`new_features_type`].
-///
-/// [`new_features_type`]: macro.new_features_type.html
-pub trait IntoFeatures<T>: Features
-where
-    T: Features,
-{
-    /// Convert this feature set into another feature set.
-    fn into_features(self) -> T;
-}
-
-impl<T, U> IntoFeatures<T> for U
-where
-    T: Features,
-    U: Features,
-    T: FromFeatures<U>,
-{
-    fn into_features(self) -> T {
-        T::from_features(self)
+/// Indicates properties of types.
+pub mod marker {
+    /// Indicates that this type is a subset of features supported by `T`.
+    ///
+    /// You should not implement this trait.  It is automatically implemented by [`new_features_type`].
+    ///
+    /// [`new_features_type`]: ../macro.new_features_type.html
+    pub unsafe trait Subset<T>: crate::Features
+    where
+        T: crate::Features,
+    {
     }
+
+    /// Indicates that this type is a superset of features supported by `T`.
+    ///
+    /// You should not implement this trait.  It is automatically implemented for types implementing [`Subset`].
+    ///
+    /// [`Subset`]: trait.Subset.html
+    pub unsafe trait Superset<T>: crate::Features
+    where
+        T: crate::Features,
+    {
+    }
+
+    unsafe impl<T, U> Superset<T> for U
+    where
+        T: crate::Features,
+        U: crate::Features,
+        T: Subset<U>,
+    {
+    }
+
+    /// Indicates that a type is both a subset and superset of itself.
+    ///
+    /// You should not implement this trait.  It is automatically implemented for types implementing [`Subset`].
+    ///
+    /// [`Subset`]: trait.Subset.html
+    pub trait Identity: Subset<Self> + Superset<Self> {}
+    impl<T> Identity for T where T: Subset<T> + Superset<T> {}
 }
 
 #[allow(unused_macros)]
@@ -221,14 +225,10 @@ macro_rules! features {
                     }
                 }
 
-                impl<T> $crate::FromFeatures<T> for $name
+                unsafe impl<T> $crate::marker::Subset<T> for $name
                 where
                     T: $crate::Features<$dollar($feature = $crate::logic::True),*>,
                 {
-                    #[inline(always)]
-                    fn from_features(features: T) -> $name {
-                        features.shrink().unwrap()
-                    }
                 }
             }
         }
@@ -450,7 +450,7 @@ macro_rules! has_features {
 
 /// Creates a new type that proves support of the specified CPU features.
 ///
-/// The generated type implements `Copy`, `Clone`, `Debug`, [`Features`], and [`FromFeatures`].
+/// The generated type implements `Copy`, `Clone`, `Debug`, [`Features`], and [`Subset`].
 /// The only way to construct the type is via one of the methods in [`Features`].
 ///
 /// The following creates a type `SseAvxType` that indicates support for SSE and AVX:
@@ -473,7 +473,7 @@ macro_rules! has_features {
 /// arch_types::new_features_type! { #[doc = "A type supporting SSE and AVX."] SseAvxType => "sse", "avx" }
 /// ```
 /// [`Features`]: trait.Features.html
-/// [`FromFeatures`]: trait.FromFeatures.html
+/// [`Subset`]: marker/trait.Subset.html
 #[macro_export]
 macro_rules! new_features_type {
     { $vis:vis $name:ident => $($feature:tt),* } => { $crate::new_features_type_internal!{ [] $vis $name => [$($feature)*] => [] } };
