@@ -16,6 +16,7 @@ nightly = []
 
 [dependencies]
 rustversion = "1"
+static_assertions = "1"
 
 [package.metadata.docs.rs]
 all-features = true
