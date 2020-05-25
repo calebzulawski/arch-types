@@ -20,19 +20,6 @@ mod x86 {
     arch_types::new_features_type! { ArchSseAvxAvx2 => "sse", "avx", "avx2" }
     arch_types::new_features_type! { ArchSseAvx2 => "sse", "avx2" }
 
-    mod assert_traits {
-        use super::*;
-        use arch_types::marker::{Identity, Subset, Superset};
-        use static_assertions::{assert_impl_all, assert_not_impl_any};
-
-        assert_impl_all! { ArchSseAvx2: Identity, Subset<ArchSseAvxAvx2> }
-        assert_not_impl_any! { ArchSseAvx2: Subset<ArchSseSse2Avx>, Superset<ArchSseAvxAvx2>, Superset<ArchSseSse2Avx> }
-
-        assert_impl_all! { ArchSseSse2Avx: Identity }
-        assert_impl_all! { ArchSseAvxAvx2: Identity, Superset<ArchSseAvx2> }
-        assert_not_impl_any! { ArchSseSse2Avx: Superset<ArchSseAvx2> }
-    }
-
     #[test]
     fn requires_features() {
         use arch_types::Features;
